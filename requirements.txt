@@ -3,5 +3,3 @@ yfinance
 pandas
 pandas-ta
 numpy
-requests
-plotly
