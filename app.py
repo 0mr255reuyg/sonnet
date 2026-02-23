@@ -1,29 +1,26 @@
 """
-BIST RADAR - Flask Backend
+BIST RADAR - Streamlit Versiyonu
 Gerçek veri: yfinance (.IS uzantısı)
 Teknik analiz: pandas-ta
-Deploy: Render.com (ücretsiz)
+Deploy: Streamlit Cloud (GitHub)
 """
 
-from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
-from apscheduler.schedulers.background import BackgroundScheduler
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
 import logging
-import os
-import json
 import time
-from datetime import datetime, timedelta
+import plotly.graph_objects as go
+from datetime import datetime
 
-# ─── SETUP ────────────────────────────────────────────────────────
+# ─── SAYFA AYARLARI ────────────────────────────────────────────────
+st.set_page_config(page_title="BIST Radar", page_icon="📈", layout="wide")
+
+# ─── LOGGING ──────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
-
-app = Flask(__name__, static_folder='static')
-CORS(app)
 
 # ─── 350+ BIST HİSSE LİSTESİ ──────────────────────────────────────
 BIST_TICKERS = [
@@ -89,17 +86,15 @@ BIST_TICKERS = [
 
 # Tekrar edenleri temizle ve .IS uzantısı ekle
 BIST_TICKERS = list(dict.fromkeys(BIST_TICKERS))
-YF_TICKERS   = [f"{t}.IS" for t in BIST_TICKERS]
+YF_TICKERS = [f"{t}.IS" for t in BIST_TICKERS]
 
-# ─── CACHE ────────────────────────────────────────────────────────
-_cache = {
-    "data": [],
-    "market": {},
-    "last_update": None,
-    "is_loading": False,
-}
+# ─── STREAMLİT CACHE ──────────────────────────────────────────────
+@st.cache_data(ttl=300)  # 5 dakika cache
+def get_cached_data():
+    """Cache'den veri çek (Streamlit standardı)."""
+    return None
 
-# ─── TEKNİK ANALİZ ────────────────────────────────────────────────
+# ─── TEKNİK ANALİZ FONKSİYONLARI (AYNEN KORUNDU) ─────────────────
 def calc_indicators(df: pd.DataFrame) -> dict:
     """Fiyat geçmişinden tüm teknik göstergeleri hesapla."""
     if df is None or len(df) < 30:
@@ -185,7 +180,7 @@ def calc_indicators(df: pd.DataFrame) -> dict:
         mom = ta.mom(close, length=10)
         ind["momentum"] = round(float(mom.iloc[-1]), 2) if mom is not None and not mom.empty else 0.0
 
-        # Hacim anomalisi (son gün / 20 günlük ortalama)
+        # Hacim anomalisi
         if len(vol) >= 21:
             avg_vol = float(vol.iloc[-21:-1].mean())
             last_vol = float(vol.iloc[-1])
@@ -197,7 +192,7 @@ def calc_indicators(df: pd.DataFrame) -> dict:
         ind["w52_high"] = round(float(high.iloc[-252:].max()), 2)
         ind["w52_low"]  = round(float(low.iloc[-252:].min()), 2)
 
-        # Fiyat geçmişi (grafik için son 90 kapanış)
+        # Fiyat geçmişi
         hist_close = close.iloc[-90:].round(2).tolist()
         hist_vol   = vol.iloc[-90:].astype(int).tolist()
         ind["price_history"]  = hist_close
@@ -210,7 +205,7 @@ def calc_indicators(df: pd.DataFrame) -> dict:
 
 
 def score_stock(info: dict, ind: dict) -> dict:
-    """Bileşik fırsat skoru hesapla."""
+    """Bileşik fırsat skoru hesapla (AYNEN KORUNDU)."""
     tech_score = 0
     fund_score = 0
     vol_score  = 0
@@ -342,14 +337,11 @@ def score_stock(info: dict, ind: dict) -> dict:
     }
 
 
-# ─── VERİ ÇEKME ───────────────────────────────────────────────────
 def fetch_stock(ticker_is: str) -> dict | None:
     """Tek bir hisseyi yfinance'dan çek ve analiz et."""
     ticker_bist = ticker_is.replace(".IS", "")
     try:
         yf_ticker = yf.Ticker(ticker_is)
-
-        # Geçmiş veri (1 yıl günlük)
         hist = yf_ticker.history(period="1y", timeout=15)
         if hist.empty or len(hist) < 20:
             return None
@@ -360,24 +352,19 @@ def fetch_stock(ticker_is: str) -> dict | None:
         except Exception:
             pass
 
-        # Temel fiyat bilgileri
         last_close   = float(hist["Close"].iloc[-1])
         prev_close   = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else last_close
         day_change   = round((last_close - prev_close) / prev_close * 100, 2)
         mcap_raw     = info.get("marketCap") or 0
-        mcap_billion = round(mcap_raw / 1e9, 1)  # Milyar TL
+        mcap_billion = round(mcap_raw / 1e9, 1)
 
-        # Göstergeler
         ind = calc_indicators(hist)
         if not ind:
             return None
 
-        # Skorlama
         scoring = score_stock(info, ind)
 
-        # Sektör bilgisi
         sector   = info.get("sector") or info.get("industry") or "Diğer"
-        # Türkçe sektör çevirisi
         sector_tr = {
             "Financial Services": "Finans",
             "Industrials": "Sanayi",
@@ -397,11 +384,9 @@ def fetch_stock(ticker_is: str) -> dict | None:
             "name":        info.get("longName") or info.get("shortName") or ticker_bist,
             "sector":      sector_tr,
             "index":       "BIST",
-            # Fiyat
             "price":       round(last_close, 2),
             "day_change":  day_change,
             "mcap":        mcap_billion,
-            # Teknik göstergeler
             "rsi":         ind.get("rsi", 50),
             "macd":        ind.get("macd", 0),
             "macd_hist":   ind.get("macd_hist", 0),
@@ -418,7 +403,6 @@ def fetch_stock(ticker_is: str) -> dict | None:
             "vol_mult":    ind.get("vol_multiplier", 1),
             "w52_high":    ind.get("w52_high", 0),
             "w52_low":     ind.get("w52_low", 0),
-            # Temel
             "pe":          round(info.get("trailingPE") or info.get("forwardPE") or 0, 1),
             "pb":          round(info.get("priceToBook") or 0, 2),
             "rev_growth":  round((info.get("revenueGrowth") or 0) * 100, 1),
@@ -427,10 +411,8 @@ def fetch_stock(ticker_is: str) -> dict | None:
             "de_ratio":    round(info.get("debtToEquity") or 0, 2),
             "roe":         round((info.get("returnOnEquity") or 0) * 100, 1),
             "foreign_pct": round(info.get("heldPercentInstitutions", 0) * 100, 1),
-            # Grafik verisi
             "price_history":  ind.get("price_history", []),
             "volume_history": ind.get("volume_history", []),
-            # Skorlar
             **scoring,
         }
 
@@ -439,14 +421,8 @@ def fetch_stock(ticker_is: str) -> dict | None:
         return None
 
 
-def run_full_scan():
-    """Tüm hisseleri tara ve cache'e kaydet."""
-    if _cache["is_loading"]:
-        log.info("Zaten taranıyor, atlanıyor.")
-        return
-
-    _cache["is_loading"] = True
-    log.info(f"Tarama başladı — {len(YF_TICKERS)} hisse")
+def run_full_scan(progress_bar=None, status_text=None):
+    """Tüm hisseleri tara ve sonuçları döndür."""
     results = []
     start = time.time()
 
@@ -454,85 +430,195 @@ def run_full_scan():
         result = fetch_stock(ticker)
         if result:
             results.append(result)
-        if i % 20 == 0:
-            log.info(f"  {i+1}/{len(YF_TICKERS)} — {ticker} — {len(results)} başarılı")
-        time.sleep(0.4)  # Rate limit için bekleme
+        
+        # İlerleme çubuğunu güncelle
+        if progress_bar:
+            progress_bar.progress((i + 1) / len(YF_TICKERS))
+        if status_text and i % 20 == 0:
+            status_text.text(f"İşleniyor: {i+1}/{len(YF_TICKERS)} — {ticker}")
+        
+        time.sleep(0.15)  # Streamlit Cloud rate limit için daha agresif bekleme
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    _cache["data"] = results
-    _cache["last_update"] = datetime.now().isoformat()
-    _cache["is_loading"] = False
-
     elapsed = round(time.time() - start, 1)
     log.info(f"Tarama tamamlandı — {len(results)} hisse — {elapsed}s")
+    
+    return results, datetime.now().isoformat()
 
 
-# ─── FLASK ROUTES ─────────────────────────────────────────────────
-@app.route("/")
-def index():
-    return send_from_directory("static", "index.html")
+# ─── STREAMLİT ARAYÜZÜ ────────────────────────────────────────────
+def main():
+    st.title("📈 BIST Radar Pro")
+    st.markdown("*Teknik analiz + Temel analiz + Hacim anomalisi ile fırsat tarama*")
+
+    # Sidebar filtreleri
+    st.sidebar.header("🔍 Filtreler")
+    
+    min_score = st.sidebar.slider("Minimum Skor", 0, 100, 50)
+    sector_filter = st.sidebar.multiselect("Sektör Seç", options=["Tümü"] + list(set(["Finans", "Sanayi", "Enerji", "Teknoloji", "GYO", "Hammadde"])), default=["Tümü"])
+    show_only_anomaly = st.sidebar.checkbox("Sadece Hacim Anomalisi", value=False)
+    
+    # Ana buton
+    if st.sidebar.button("🔄 Taramayı Başlat", type="primary"):
+        with st.spinner("BIST hisseleri taranıyor... Bu işlem 2-4 dakika sürebilir."):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            results, last_update = run_full_scan(progress_bar, status_text)
+            
+            # Session state'e kaydet
+            st.session_state["results"] = results
+            st.session_state["last_update"] = last_update
+            st.session_state["has_data"] = True
+            
+            progress_bar.empty()
+            status_text.empty()
+            st.success(f"✅ Tarama tamamlandı! {len(results)} hisse analiz edildi.")
+
+    # Eğer veri varsa göster
+    if st.session_state.get("has_data"):
+        results = st.session_state["results"]
+        last_update = st.session_state.get("last_update", "Bilinmiyor")
+        
+        st.caption(f"🕐 Son güncelleme: {last_update}")
+        
+        # Filtreleme
+        filtered = [r for r in results if r["score"] >= min_score]
+        if show_only_anomaly:
+            filtered = [r for r in filtered if r.get("has_anomaly", False)]
+        
+        # Özet kartları
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Toplam Hisse", len(results))
+        with col2:
+            st.metric("Filtrelenen", len(filtered))
+        with col3:
+            guclu_count = len([r for r in filtered if r["type"] == "guclu"])
+            st.metric("🔥 Güçlü Sinyal", guclu_count)
+        
+        # Tablo görünümü
+        st.subheader("📊 Tarama Sonuçları")
+        
+        # Tablo için sütunları hazırla
+        table_data = []
+        for r in filtered:
+            table_data.append({
+                "Hisse": r["ticker"],
+                "Fiyat": f"₺{r['price']}",
+                "Günlük": f"{r['day_change']:+.2f}%",
+                "Skor": r["score"],
+                "Sinyal": r["type"].upper(),
+                "RSI": r["rsi"],
+                "Hacim": f"{r['vol_mult']}x",
+                "Sektör": r["sector"]
+            })
+        
+        df = pd.DataFrame(table_data)
+        
+        # Skor ve sinyal bazlı renklendirme
+        def color_score(val):
+            if val >= 68:
+                return "background-color: #22c55e; color: white"
+            elif val >= 50:
+                return "background-color: #eab308; color: black"
+            elif val < 28:
+                return "background-color: #ef4444; color: white"
+            return ""
+        
+        st.dataframe(
+            df.style.map(color_score, subset=["Skor"]),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Detaylı inceleme (expander)
+        st.subheader("🔍 Hisse Detay İnceleme")
+        selected_ticker = st.selectbox("Hisse Seç", [r["ticker"] for r in filtered])
+        
+        if selected_ticker:
+            selected_data = next((r for r in results if r["ticker"] == selected_ticker), None)
+            if selected_data:
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    # Fiyat grafiği
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=list(range(len(selected_data["price_history"]))),
+                        y=selected_data["price_history"],
+                        mode="lines",
+                        name="Fiyat",
+                        line=dict(color="#3b82f6", width=2)
+                    ))
+                    fig.update_layout(
+                        title=f"{selected_ticker} - 90 Günlük Fiyat",
+                        xaxis_title="Gün",
+                        yaxis_title="Fiyat (₺)",
+                        template="plotly_white",
+                        height=300,
+                        margin=dict(l=20, r=20, t=40, b=20)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Özet kartları
+                    st.metric("Fiyat", f"₺{selected_data['price']}", f"{selected_data['day_change']:+.2f}%")
+                    st.metric("Skor", selected_data["score"], 
+                             delta="GÜÇLÜ" if selected_data["score"]>=68 else "AL" if selected_data["score"]>=50 else "İZLE")
+                    st.metric("RSI", selected_data["rsi"])
+                    st.metric("MACD", f"{selected_data['macd_hist']:+.3f}")
+                    st.metric("Hacim Çarpanı", f"{selected_data['vol_mult']}x")
+                    
+                    if selected_data["signals"]:
+                        st.markdown("📌 **Sinyaller:**")
+                        for sig in selected_data["signals"]:
+                            st.caption(f"• {sig}")
+                
+                # Teknik detaylar
+                with st.expander("📋 Tüm Teknik Veriler"):
+                    st.json({
+                        "EMA50": selected_data["ema50"],
+                        "EMA200": selected_data["ema200"],
+                        "Altın Kesişim": "✅" if selected_data["ema_golden"] else "❌",
+                        "BB %": selected_data["bb_percent"],
+                        "Stoch RSI": selected_data["stoch_rsi"],
+                        "ADX": selected_data["adx"],
+                        "CCI": selected_data["cci"],
+                        "Williams %R": selected_data["williams_r"]
+                    })
+                
+                # Temel veriler
+                with st.expander("🏢 Temel Analiz Verileri"):
+                    st.json({
+                        "F/K": selected_data["pe"],
+                        "PD/DD": selected_data["pb"],
+                        "Büyüme %": selected_data["rev_growth"],
+                        "FAVÖK Marj %": selected_data["ebitda_margin"],
+                        "Net Kar Marj %": selected_data["net_margin"],
+                        "Borç/Özkaynak": selected_data["de_ratio"],
+                        "Özkaynak Kârlılığı %": selected_data["roe"]
+                    })
+    
+    else:
+        # İlk açılış ekranı
+        st.info("👈 Sol menüden **'Taramayı Başlat'** butonuna basarak analizi başlatabilirsin.")
+        st.markdown("""
+        ### 🎯 Nasıl Kullanılır?
+        1. **Taramayı Başlat** butonuna tıkla (2-4 dk sürer)
+        2. Filtrelerle hisseleri daralt (Skor, Sektör, Hacim)
+        3. Tablodan ilgilendiğin hisseyi seç
+        4. Grafik ve detay verilerini incele
+        
+        > ⚠️ **Not:** Streamlit Cloud ücretsiz planda çalıştığı için ilk tarama biraz yavaş olabilir. Sabırlı ol kanka! 🚀
+        """)
 
 
-@app.route("/api/scan")
-def api_scan():
-    """Tam tarama sonuçlarını döndür."""
-    if not _cache["data"]:
-        return jsonify({
-            "status": "loading",
-            "message": "İlk tarama devam ediyor, lütfen bekleyin (2-4 dakika)...",
-            "data": [],
-        })
-
-    return jsonify({
-        "status": "ok",
-        "count":  len(_cache["data"]),
-        "last_update": _cache["last_update"],
-        "is_loading":  _cache["is_loading"],
-        "data":  _cache["data"],
-    })
-
-
-@app.route("/api/stock/<ticker>")
-def api_stock(ticker):
-    """Tek hisse anlık veri."""
-    ticker_is = f"{ticker.upper()}.IS"
-    result = fetch_stock(ticker_is)
-    if not result:
-        return jsonify({"error": "Hisse bulunamadı"}), 404
-    return jsonify(result)
-
-
-@app.route("/api/status")
-def api_status():
-    return jsonify({
-        "status": "ok",
-        "cached_stocks": len(_cache["data"]),
-        "last_update": _cache["last_update"],
-        "is_loading": _cache["is_loading"],
-    })
-
-
-@app.route("/api/refresh", methods=["POST"])
-def api_refresh():
-    """Manuel yenileme tetikle."""
-    if _cache["is_loading"]:
-        return jsonify({"message": "Zaten taranıyor..."}), 409
-    import threading
-    threading.Thread(target=run_full_scan, daemon=True).start()
-    return jsonify({"message": "Tarama başlatıldı"})
-
-
-# ─── BAŞLANGIÇ ────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # İlk taramayı arka planda başlat
-    import threading
-    log.info("BIST Radar başlatılıyor...")
-    threading.Thread(target=run_full_scan, daemon=True).start()
-
-    # Her 4 saatte bir otomatik yenile
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(run_full_scan, "interval", hours=4, id="auto_scan")
-    scheduler.start()
-
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # Session state başlat
+    if "has_data" not in st.session_state:
+        st.session_state["has_data"] = False
+    if "results" not in st.session_state:
+        st.session_state["results"] = []
+    
+    main()
