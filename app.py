@@ -1,8 +1,5 @@
 """
-BIST RADAR - Streamlit Versiyonu (DÜZELTİLMİŞ)
-Gerçek veri: yfinance (.IS uzantısı)
-Teknik analiz: pandas-ta
-Deploy: Streamlit Cloud (GitHub)
+BIST RADAR - Streamlit (TAM ÇALIŞAN VERSİYON)
 """
 
 import streamlit as st
@@ -17,72 +14,34 @@ from datetime import datetime
 # ─── SAYFA AYARLARI ────────────────────────────────────────────────
 st.set_page_config(page_title="BIST Radar", page_icon="📈", layout="wide")
 
-# ─── 350+ BIST HİSSE LİSTESİ ──────────────────────────────────────
+# ─── 100 BIST HİSSE LİSTESİ (HIZLI TEST İÇİN) ────────────────────
 BIST_TICKERS = [
-    # BANKALAR
     "AKBNK","GARAN","ISCTR","YKBNK","HALKB","VAKBN","QNBFB","ALBRK",
-    "SKBNK","TSKB","DENIZ",
-    # HOLDİNGLER
     "KCHOL","SAHOL","DOHOL","TKFEN","ISMEN","ISGSY",
-    # HAVAYOLLARI & ULAŞIM
     "THYAO","PGSUS","TAVHL","CLEBI",
-    # ENERJİ & PETROL
     "TUPRS","PETKM","AYGAZ","AKSEN","ZOREN","ENJSA","AYDEM",
-    # SAVUNMA & MAKİNE
     "ASELS","OTKAR","KATMR",
-    # OTOMOTİV
     "TOASO","FROTO","ARCLK","KARSN","TTRAK","BFREN","DITAS","JANTS",
-    # PERAKENDE
     "BIMAS","MGROS","SOKM","CRFSA","MAVI","BIZIM","TKNSA","VAKKO",
-    # TEKNOLOJİ & TELEKOMÜNİKASYON
     "TCELL","TTKOM","LOGO","INDES","ARENA","LINK","DGATE","FONET",
-    "PENTA","PKART","MTRKS","NETAS",
-    # CAM & SERAMİK
     "SISE","TRKCM","ANACM","KUTPO","EGSER","USAK",
-    # İNŞAAT & GYO
     "ENKAI","EKGYO","ISGYO","TRGYO","SNGYO","RYGYO","VKGYO",
-    "NUGYO","OZKGY","HLGYO","MSGYO","PGYO","AKMGY",
-    # GIDA & İÇECEK
     "ULKER","AEFES","CCOLA","TATGD","DARDL","BANVT","MERKO",
-    "KNFRT","SELVA","KENT","TUKAS","ERSU","KERVT",
-    # MADENCİLİK
     "KOZAL","KOZAA",
-    # KİMYA & İLAÇ
     "ECILC","DEVA","ALKIM","GUBRF","HEKTS","POLHO","BAGFS",
-    "GOODY","SEKUR","KLKIM","EPLAS",
-    # SİGORTA & FİNANS
-    "ANHYT","ANSGR","AKGRT","RAYSG","TURSG","LIDER","UNLU","INFO",
-    # TEKSTİL
+    "ANHYT","ANSGR","AKGRT","RAYSG","TURSG",
     "KORDS","SKTAS","SNPAM","YUNSA","SUWEN","BRKO","BOSSA",
-    "KRTEK","ARSAN","LUKSK","MNDRS",
-    # LOJİSTİK
     "RYSAS","BNTAS","KONTR",
-    # ÇİMENTO
-    "AKCNS","CIMSA","BOLUC","ADANA","AFYON","GOLTS","KONYA",
-    "MRDIN","NUHCM","UNYEC","BUCIM","BASCM","OSMEN",
-    # KAĞIT & AMBALAJ
-    "KARTN","OLMIP","KAPLM","BAKAB","TEZOL",
-    # ELEKTRİK
-    "AKENR","GESAN","EMKEL","PAMEL",
-    # METAL & DEMİR ÇELİK
-    "EREGL","KRDMD","KRDMA","KRDMB","ISDMR","BRSAN","CELHA",
-    "SARKY","BORLS","DMSAS","GEDIK","BURCE","OZBAL","IMASM",
-    "CEMTS","CEMAS","OYLUM","TUCLK","SIMAS","KRSAN","SAMAT",
-    # SAĞLIK
-    "MPARK","LKMNH","MEDTR",
-    # SPOR
+    "AKCNS","CIMSA","BOLUC","ADANA","AFYON",
+    "EREGL","KRDMD","KRDMA","KRDMB","ISDMR","BRSAN",
+    "MPARK","LKMNH",
     "BJKAS","FENER","GSRAY",
-    # DİĞER
-    "SODSN","GENTS","EGPRO","BRMEN","YATAS","BMELK","PRDGS",
-    "HUBVC","KAREL","ESCOM","VBTYZ","OBASE","EDATA",
-    "MACKO",
 ]
 
-# Tekrar edenleri temizle ve .IS uzantısı ekle
 BIST_TICKERS = list(dict.fromkeys(BIST_TICKERS))
 YF_TICKERS = [f"{t}.IS" for t in BIST_TICKERS]
 
-# ─── SESSION STATE BAŞLATMA ─────────────────────────────────────
+# ─── SESSION STATE ────────────────────────────────────────────────
 if "has_data" not in st.session_state:
     st.session_state.has_data = False
 if "results" not in st.session_state:
@@ -90,9 +49,8 @@ if "results" not in st.session_state:
 if "last_update" not in st.session_state:
     st.session_state.last_update = None
 
-# ─── TEKNİK ANALİZ FONKSİYONLARI ─────────────────────────────────
+# ─── TEKNİK ANALİZ ────────────────────────────────────────────────
 def calc_indicators(df):
-    """Fiyat geçmişinden tüm teknik göstergeleri hesapla."""
     if df is None or len(df) < 30:
         return {}
 
@@ -104,11 +62,9 @@ def calc_indicators(df):
     ind = {}
 
     try:
-        # RSI
         rsi = ta.rsi(close, length=14)
         ind["rsi"] = round(float(rsi.iloc[-1]), 1) if rsi is not None and not rsi.empty else 50.0
 
-        # MACD
         macd_df = ta.macd(close, fast=12, slow=26, signal=9)
         if macd_df is not None and not macd_df.empty:
             ind["macd"] = round(float(macd_df.iloc[-1, 0]), 3)
@@ -117,7 +73,6 @@ def calc_indicators(df):
         else:
             ind["macd"] = ind["macd_signal"] = ind["macd_hist"] = 0.0
 
-        # Bollinger Bands
         bb = ta.bbands(close, length=20)
         if bb is not None and not bb.empty:
             upper = float(bb.iloc[-1, 0])
@@ -129,21 +84,18 @@ def calc_indicators(df):
         else:
             ind["bb_percent"] = 0.5
 
-        # Stochastic RSI
         stoch = ta.stochrsi(close, length=14)
         if stoch is not None and not stoch.empty:
             ind["stoch_rsi"] = round(float(stoch.iloc[-1, 0]) * 100, 1)
         else:
             ind["stoch_rsi"] = 50.0
 
-        # ADX
         adx_df = ta.adx(high, low, close, length=14)
         if adx_df is not None and not adx_df.empty:
             ind["adx"] = round(float(adx_df.iloc[-1, 0]), 1)
         else:
             ind["adx"] = 20.0
 
-        # EMA 50 / 200
         ema50 = ta.ema(close, length=50)
         ema200 = ta.ema(close, length=200)
         if ema50 is not None and ema200 is not None and len(ema50) > 0 and len(ema200) > 0:
@@ -156,15 +108,12 @@ def calc_indicators(df):
             ind["ema50"] = ind["ema200"] = 0.0
             ind["ema_golden"] = False
 
-        # CCI
         cci = ta.cci(high, low, close, length=20)
         ind["cci"] = round(float(cci.iloc[-1]), 1) if cci is not None and not cci.empty else 0.0
 
-        # Williams %R
         willr = ta.willr(high, low, close, length=14)
         ind["williams_r"] = round(float(willr.iloc[-1]), 1) if willr is not None and not willr.empty else -50.0
 
-        # OBV
         obv = ta.obv(close, vol)
         if obv is not None and len(obv) >= 10:
             obv_recent = obv.iloc[-10:]
@@ -172,11 +121,9 @@ def calc_indicators(df):
         else:
             ind["obv_trend"] = 0.0
 
-        # Momentum
         mom = ta.mom(close, length=10)
         ind["momentum"] = round(float(mom.iloc[-1]), 2) if mom is not None and not mom.empty else 0.0
 
-        # Hacim anomalisi
         if len(vol) >= 21:
             avg_vol = float(vol.iloc[-21:-1].mean())
             last_vol = float(vol.iloc[-1])
@@ -184,15 +131,11 @@ def calc_indicators(df):
         else:
             ind["vol_multiplier"] = 1.0
 
-        # 52 haftalık high/low
         ind["w52_high"] = round(float(high.iloc[-252:].max()), 2) if len(high) >= 252 else round(float(high.iloc[-1]), 2)
         ind["w52_low"] = round(float(low.iloc[-252:].min()), 2) if len(low) >= 252 else round(float(low.iloc[-1]), 2)
 
-        # Fiyat geçmişi
-        hist_close = close.iloc[-90:].round(2).tolist()
-        hist_vol = vol.iloc[-90:].astype(int).tolist()
-        ind["price_history"] = hist_close
-        ind["volume_history"] = hist_vol
+        ind["price_history"] = close.iloc[-90:].round(2).tolist()
+        ind["volume_history"] = vol.iloc[-90:].astype(int).tolist()
 
     except Exception as e:
         print(f"Gösterge hatası: {e}")
@@ -201,7 +144,6 @@ def calc_indicators(df):
 
 
 def score_stock(info, ind):
-    """Bileşik fırsat skoru hesapla."""
     tech_score = 0
     fund_score = 0
     vol_score = 0
@@ -220,7 +162,6 @@ def score_stock(info, ind):
     mom = ind.get("momentum", 0)
     vol_mult = ind.get("vol_multiplier", 1)
 
-    # Teknik
     if rsi < 30:
         tech_score += 22
         signals.append("RSI Aşırı Satım")
@@ -264,7 +205,6 @@ def score_stock(info, ind):
 
     tech_score = max(0, min(100, tech_score))
 
-    # Temel
     pe = info.get("trailingPE") or info.get("forwardPE") or 0
     pb = info.get("priceToBook") or 0
     rev_growth = (info.get("revenueGrowth") or 0) * 100
@@ -307,7 +247,6 @@ def score_stock(info, ind):
 
     fund_score = max(0, min(100, fund_score))
 
-    # Hacim
     if vol_mult > 4:
         vol_score += 40
         signals.append("HACİM PATLAMASI")
@@ -347,7 +286,6 @@ def score_stock(info, ind):
 
 
 def fetch_stock(ticker_is):
-    """Tek bir hisseyi yfinance'dan çek ve analiz et."""
     ticker_bist = ticker_is.replace(".IS", "")
     try:
         yf_ticker = yf.Ticker(ticker_is)
@@ -430,7 +368,6 @@ def fetch_stock(ticker_is):
 
 
 def run_full_scan():
-    """Tüm hisseleri tara ve sonuçları döndür."""
     results = []
     start = time.time()
 
@@ -439,7 +376,7 @@ def run_full_scan():
         if result:
             results.append(result)
         
-        time.sleep(0.1)  # Rate limit için bekleme
+        time.sleep(0.1)
 
     results.sort(key=lambda x: x["score"], reverse=True)
     elapsed = round(time.time() - start, 1)
@@ -448,20 +385,17 @@ def run_full_scan():
     return results
 
 
-# ─── STREAMLİT ARAYÜZÜ ────────────────────────────────────────────
+# ─── ARAYÜZ ───────────────────────────────────────────────────────
 def main():
     st.title("📈 BIST Radar Pro")
-    st.markdown("*Teknik analiz + Temel analiz + Hacim anomalisi ile fırsat tarama*")
+    st.markdown("*Teknik analiz + Temel analiz + Hacim anomalisi*")
 
-    # Sidebar
     st.sidebar.header("🔍 Filtreler")
-    
     min_score = st.sidebar.slider("Minimum Skor", 0, 100, 50)
     show_only_anomaly = st.sidebar.checkbox("Sadece Hacim Anomalisi", value=False)
     
-    # Tarama butonu
     if st.sidebar.button("🔄 Taramayı Başlat", type="primary"):
-        with st.spinner("BIST hisseleri taranıyor... (2-4 dakika)"):
+        with st.spinner("BIST hisseleri taranıyor... (1-2 dakika)"):
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -475,19 +409,16 @@ def main():
             status_text.empty()
             st.success(f"✅ Tarama tamamlandı! {len(results)} hisse analiz edildi.")
 
-    # Veri varsa göster
     if st.session_state.has_data and len(st.session_state.results) > 0:
         results = st.session_state.results
         last_update = st.session_state.last_update
         
         st.caption(f"🕐 Son güncelleme: {last_update}")
         
-        # Filtreleme
         filtered = [r for r in results if r["score"] >= min_score]
         if show_only_anomaly:
             filtered = [r for r in filtered if r.get("has_anomaly", False)]
         
-        # Özet kartları
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Toplam Hisse", len(results))
@@ -497,7 +428,6 @@ def main():
             guclu_count = len([r for r in filtered if r["type"] == "guclu"])
             st.metric("🔥 Güçlü Sinyal", guclu_count)
         
-        # Tablo
         st.subheader("📊 Tarama Sonuçları")
         
         table_data = []
@@ -516,7 +446,6 @@ def main():
         df = pd.DataFrame(table_data)
         st.dataframe(df, use_container_width=True, hide_index=True)
         
-        # Detaylı inceleme
         st.subheader("🔍 Hisse Detay İnceleme")
         ticker_options = [r["ticker"] for r in filtered]
         if len(ticker_options) > 0:
@@ -528,7 +457,6 @@ def main():
                     col1, col2 = st.columns([2, 1])
                     
                     with col1:
-                        # Fiyat grafiği
                         if len(selected_data["price_history"]) > 0:
                             fig = go.Figure()
                             fig.add_trace(go.Scatter(
@@ -563,7 +491,6 @@ def main():
                             for sig in selected_data["signals"]:
                                 st.caption(f"• {sig}")
                     
-                    # Teknik detaylar
                     with st.expander("📋 Tüm Teknik Veriler"):
                         st.json({
                             "EMA50": selected_data["ema50"],
@@ -576,7 +503,6 @@ def main():
                             "Williams %R": selected_data["williams_r"]
                         })
                     
-                    # Temel veriler
                     with st.expander("🏢 Temel Analiz Verileri"):
                         st.json({
                             "F/K": selected_data["pe"],
@@ -589,14 +515,7 @@ def main():
                         })
     
     else:
-        st.info("👈 Sol menüden **'Taramayı Başlat'** butonuna basarak analizi başlatabilirsin.")
-        st.markdown("""
-        ### 🎯 Nasıl Kullanılır?
-        1. **Taramayı Başlat** butonuna tıkla (2-4 dk sürer)
-        2. Filtrelerle hisseleri daralt (Skor, Hacim)
-        3. Tablodan ilgilendiğin hisseyi seç
-        4. Grafik ve detay verilerini incele
-        """)
+        st.info("👈 Sol menüden **'Taramayı Başlat'** butonuna bas.")
 
 
 if __name__ == "__main__":
